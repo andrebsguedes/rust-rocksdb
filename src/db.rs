@@ -67,7 +67,7 @@ pub trait ThreadMode {
 ///
 /// See [`DB`] for more details, including performance implications for each mode
 pub struct SingleThreaded {
-    cfs: BTreeMap<String, ColumnFamily>,
+    pub(crate) cfs: BTreeMap<String, ColumnFamily>,
 }
 
 /// Actual marker type for the marker trait `ThreadMode`, which holds
@@ -76,7 +76,7 @@ pub struct SingleThreaded {
 ///
 /// See [`DB`] for more details, including performance implications for each mode
 pub struct MultiThreaded {
-    cfs: RwLock<BTreeMap<String, Arc<UnboundColumnFamily>>>,
+    pub(crate) cfs: RwLock<BTreeMap<String, Arc<UnboundColumnFamily>>>,
 }
 
 impl ThreadMode for SingleThreaded {
@@ -126,6 +126,7 @@ pub struct DBWithThreadMode<T: ThreadMode> {
     cfs: T, // Column families are held differently depending on thread mode
     path: PathBuf,
     _outlive: Vec<OptionsMustOutliveDB>,
+    drop_with_optimistic_txn_db: bool
 }
 
 /// Minimal set of DB-related methods, intended to be  generic over
@@ -216,6 +217,21 @@ enum AccessType<'a> {
 }
 
 impl<T: ThreadMode> DBWithThreadMode<T> {
+    pub(crate) fn from_optimistic_txn_db_base(
+        inner: *mut ffi::rocksdb_t,
+        cfs: T,
+        path: PathBuf,
+        outlive: Vec<OptionsMustOutliveDB>,
+    ) -> Self {
+        Self {
+            inner,
+            cfs,
+            path,
+            _outlive: outlive,
+            drop_with_optimistic_txn_db: true
+        }
+    }
+
     /// Opens a database with default options.
     pub fn open_default<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let mut opts = Options::default();
@@ -455,6 +471,7 @@ impl<T: ThreadMode> DBWithThreadMode<T> {
             path: path.as_ref().to_path_buf(),
             cfs: T::new_cf_map_internal(cf_map),
             _outlive: outlive,
+            drop_with_optimistic_txn_db: false
         })
     }
 
@@ -1821,7 +1838,11 @@ impl<T: ThreadMode> Drop for DBWithThreadMode<T> {
     fn drop(&mut self) {
         unsafe {
             self.cfs.drop_all_cfs_internal();
-            ffi::rocksdb_close(self.inner);
+            if self.drop_with_optimistic_txn_db {
+                ffi::rocksdb_optimistictransactiondb_close_base_db(self.inner);
+            } else {
+                ffi::rocksdb_close(self.inner);
+            }
         }
     }
 }

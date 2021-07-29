@@ -95,6 +95,9 @@ mod slice_transform;
 mod snapshot;
 mod sst_file_writer;
 mod write_batch;
+mod transaction;
+mod transaction_db;
+mod optimistic_transaction_db;
 
 pub use crate::{
     column_family::{
@@ -121,6 +124,9 @@ pub use crate::{
     snapshot::{Snapshot, SnapshotWithThreadMode},
     sst_file_writer::SstFileWriter,
     write_batch::{WriteBatch, WriteBatchIterator},
+    transaction::Transaction,
+    transaction_db::{TransactionDBWithThreadMode, TransactionDBOptions, TransactionOptions},
+    optimistic_transaction_db::{OptimisticTransactionDBWithThreadMode, OptimisticTransactionOptions, OptimisticTransactionDB}
 };
 
 use librocksdb_sys as ffi;
